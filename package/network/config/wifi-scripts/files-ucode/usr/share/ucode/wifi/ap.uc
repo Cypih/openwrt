@@ -4,7 +4,7 @@ import * as libuci from 'uci';
 import { md5 } from 'digest';
 import * as fs from 'fs';
 
-import { append, append_raw, append_value, append_vars, append_string_vars, comment, push_config, set_default, touch_file } from 'wifi.common';
+import { append, append_raw, append_value, append_vars, append_string_vars, comment, log, push_config, set_default, touch_file } from 'wifi.common';
 import * as netifd from 'wifi.netifd';
 import * as iface from 'wifi.iface';
 
@@ -393,6 +393,15 @@ function iface_eap_server(config) {
 function iface_roaming(config) {
 	if (!config.ieee80211r || config.wpa < 2)
 		return;
+
+	/* auth types without an FT AKM (see wpa_key_mgmt) cannot use 802.11r;
+	   with no PSK or auth secret to derive the r0kh/r1kh key from, the FT
+	   setup below would report FT_KEY_CANT_BE_DERIVED and derive a bogus,
+	   unusable key (e.g. on owe) */
+	if (!(config.auth_type in [ 'psk', 'psk2', 'sae', 'psk-sae', 'psk-sae-compat', 'eap', 'eap2', 'eap-eap2', 'eap192' ])) {
+		log(`Ignoring ieee80211r on ${config.ifname}: no FT support for auth type '${config.auth_type}'`);
+		return;
+	}
 
 	set_default(config, 'mobility_domain', substr(md5(config.ssid + '\n'), 0, 4));
 	set_default(config, 'ft_psk_generate_local', config.auth_type == 'psk');
